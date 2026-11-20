@@ -1,0 +1,87 @@
+﻿using Assets._Project.Develop.Runtime.UI.LevelsMenuPopup;
+using System;
+using System.Collections.Generic;
+using UnityEngine;
+
+namespace Assets._Project.Develop.Runtime.UI.Core.Popup
+{
+    public abstract class PopupService : IDisposable
+    {
+        protected readonly ViewsFactory ViewsFactory;
+        protected readonly ProjectPresentersFactory PresentersFactory;
+
+        private readonly Dictionary<PopupPresenterBase, PopupInfo> _presenterToInfo = new();
+
+        protected PopupService(
+            ViewsFactory viewsFactory,
+            ProjectPresentersFactory presentersFactory)
+        {
+            ViewsFactory = viewsFactory;
+            PresentersFactory = presentersFactory;
+        }
+
+        protected abstract Transform PopupLayer { get; }
+
+        public LevelsMenuPopupPresenter OpenLevelsMenuPopup()
+        {
+            LevelsMenuPopupView view = ViewsFactory.Create<LevelsMenuPopupView>(ViewIDs.LevelsMenuPopup, PopupLayer);
+
+            LevelsMenuPopupPresenter popup = PresentersFactory.CreateLevelsMenuPopupPresenter(view);
+
+            OnPopupCreated(popup, view);
+
+            return popup;
+        }
+
+        public void ClosePopup(PopupPresenterBase popup)
+        {
+            popup.CloseRequest -= ClosePopup;
+
+            popup.Hide(() =>
+            {
+                _presenterToInfo[popup].ClosedCallback?.Invoke();
+
+                DisposeFor(popup);
+                _presenterToInfo.Remove(popup);
+            });
+        }
+
+        public void Dispose()
+        {
+            foreach (PopupPresenterBase popup in _presenterToInfo.Keys)
+            {
+                popup.CloseRequest -= ClosePopup;
+                DisposeFor(popup);
+            }
+
+            _presenterToInfo.Clear();
+        }
+
+        protected void OnPopupCreated(PopupPresenterBase popup, PopupViewBase view, Action closedCallback = null)
+        {
+            _presenterToInfo.Add(popup, new PopupInfo(view, closedCallback));
+            popup.Initialize();
+            popup.Show();
+
+            popup.CloseRequest += ClosePopup;
+        }
+
+        private void DisposeFor(PopupPresenterBase popup)
+        {
+            popup.Dispose();
+            ViewsFactory.Release(_presenterToInfo[popup].View);
+        }
+
+        private class PopupInfo
+        {
+            public PopupInfo(PopupViewBase view, Action closedCallback)
+            {
+                View = view;
+                ClosedCallback = closedCallback;
+            }
+
+            public PopupViewBase View { get; }
+            public Action ClosedCallback { get; }
+        }
+    }
+}
